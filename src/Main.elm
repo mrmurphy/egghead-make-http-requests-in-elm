@@ -3,10 +3,29 @@ module Main exposing (..)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick)
+import Http exposing (Request)
+import Json.Decode
+import Json.Decode.Pipeline
 
 
 -- Request URL:
 -- https://hipstore.now.sh/api/products
+
+
+productsRequest : Request (List Product)
+productsRequest =
+    Http.get "https://hipstore.now.sh/api/products" (Json.Decode.list productDecoder)
+
+
+productDecoder : Json.Decode.Decoder Product
+productDecoder =
+    Json.Decode.Pipeline.decode Product
+        -- description -> name
+        |> Json.Decode.Pipeline.required "name" Json.Decode.string
+        -- photo -> image
+        |> Json.Decode.Pipeline.required "image" Json.Decode.string
+        -- id -> id
+        |> Json.Decode.Pipeline.required "id" Json.Decode.string
 
 
 type alias Model =
@@ -24,6 +43,8 @@ type alias Product =
 
 type Msg
     = LoadProducts
+    | GotProducts (List Product)
+    | ShowError String
 
 
 main : Program Never Model Msg
@@ -47,9 +68,25 @@ init =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        ShowError err ->
+            { model | error = err } ! []
+
+        GotProducts products ->
+            { model | products = products } ! []
+
         LoadProducts ->
             model
-                ! []
+                ! [ Http.send
+                        (\res ->
+                            case res of
+                                Ok products ->
+                                    GotProducts products
+
+                                Err httpErr ->
+                                    ShowError (toString httpErr)
+                        )
+                        productsRequest
+                  ]
 
 
 view : Model -> Html Msg
@@ -58,7 +95,11 @@ view model =
         div []
             [ button [ onClick LoadProducts ] [ text "Load Hipster Stuff" ]
             , div []
-                [ p [] [ text "You're just one click away from some fun hipster stuff." ] ]
+                [ if List.length model.products > 0 then
+                    div [] (List.map productView model.products)
+                  else
+                    p [] [ text "You're just one click away from some fun hipster stuff." ]
+                ]
             , p [ style [ ( "color", "red" ) ] ] [ text model.error ]
             ]
 
